@@ -32,4 +32,4 @@ jobs:
       - name: Run smoke tests
         env:
           MPLBACKEND: Agg
-        run: python -m tests.test_smoke
+        run: python smoke_test.py
