@@ -1,0 +1,3 @@
+deap>=1.4
+shapely>=2.0
+matplotlib>=3.7
