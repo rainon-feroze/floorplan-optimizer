@@ -6,6 +6,12 @@ A genetic algorithm that evolves 2D residential floor plans inside a fixed
 building envelope, scored against daylighting, circulation, adjacency, egress,
 and code-minimum room dimension objectives.
 
+![Evolution](evolution.gif)
+
+400 generations, sampled every 4. The layout starts as random overlapping
+rectangles and organizes itself — no floor plan was programmed in, only a
+scoring function describing what a good one looks like.
+
 ![Before and after layout](layout_before_after.png)
 
 **Left:** the best layout from a random starting population — rooms overlapping,
