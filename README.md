@@ -1,6 +1,6 @@
 # Generative Floor Plan Optimizer
 
-![CI](https://github.com/rainon-feroze/loorplan-optimizer/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/rainon-feroze/floorplan-optimizer/actions/workflows/ci.yml/badge.svg)
 
 A genetic algorithm that evolves 2D residential floor plans inside a fixed
 building envelope, scored against daylighting, circulation, adjacency, egress,
