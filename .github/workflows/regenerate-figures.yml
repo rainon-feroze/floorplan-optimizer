@@ -1,0 +1,54 @@
+# Manually-triggered: runs the FULL optimization (not the smoke test) and
+# commits the regenerated figures back to the repo. Useful after tuning
+# fitness weights or changing the room program -- keeps the README images
+# in sync with the actual code without running it locally.
+#
+# Trigger from the Actions tab -> "Regenerate figures" -> "Run workflow".
+
+name: Regenerate figures
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Random seed for the GA"
+        required: false
+        default: "42"
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run full optimization
+        env:
+          MPLBACKEND: Agg
+          FLOORPLAN_SEED: ${{ inputs.seed }}
+        run: python main.py
+
+      - name: Commit updated figures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add layout_before_after.png ga_convergence.png
+          if git diff --staged --quiet; then
+            echo "Figures unchanged, nothing to commit."
+          else
+            git commit -m "Regenerate figures (seed=${{ inputs.seed }})"
+            git push
+          fi
