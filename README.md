@@ -46,6 +46,12 @@ python smoke_test.py
 Runs in about two seconds. This is what CI executes on every push, across
 Python 3.10, 3.11, and 3.12.
 
+To regenerate the animation:
+
+```bash
+python make_animation.py
+```
+
 ---
 
 ## Structure
@@ -53,6 +59,7 @@ Python 3.10, 3.11, and 3.12.
 ```
 main.py           # Entry point: runs the GA, prints scores, saves figures
 smoke_test.py     # Fast end-to-end verification (what CI runs)
+make_animation.py # Renders evolution.gif from a recorded run
 
 floorplan/
   program.py      # The lot envelope + room program — edit this to change the house
