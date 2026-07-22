@@ -1,115 +1,169 @@
 # Generative Floor Plan Optimizer
 
-A genetic algorithm that evolves 2D room layouts inside a fixed building
-envelope, scored against adjacency, daylighting, circulation, egress, and
-code-minimum room dimension objectives.
+![CI](https://github.com/rainon-feroze/REPO-NAME/actions/workflows/ci.yml/badge.svg)
 
-This implements the "simplest viable version" + steps 1-3 of the suggested
-build order from the project brief (steps 1-2: rectangle packing + GA loop;
-step 3: constraint checking baked into the fitness function).
+A genetic algorithm that evolves 2D residential floor plans inside a fixed
+building envelope, scored against daylighting, circulation, adjacency, egress,
+and code-minimum room dimension objectives.
 
 ![Before and after layout](layout_before_after.png)
 
-Left: best of a random generation-0 population (rooms overlapping, no
-structure). Right: the evolved layout after ~400 generations — zero overlap,
-kitchen beside dining, bedrooms on the perimeter for daylight and away from
-the entry, a compact circulation core.
+**Left:** the best layout from a random starting population — rooms overlapping,
+no organization. **Right:** the same problem after 400 generations of evolution.
+Zero overlap, kitchen beside dining, bedrooms on the perimeter for daylight and
+away from the entry, a compact circulation core.
+
+Total penalty score drops from **53,548 to 477**, with overlap, out-of-bounds,
+daylighting, separation, and egress all driven to exactly zero.
 
 ![GA convergence](ga_convergence.png)
 
-Total penalty score drops from ~62,000 (random) to ~590 (evolved).
-
-## Structure
-
-```
-floorplan/
-  program.py    # Step 1: the lot envelope + room program (hardcode your house here)
-  genome.py     # Genome encoding: 3 genes/room (x, y, aspect ratio) -> placed rectangles
-  fitness.py    # Step 3: multi-objective fitness (weighted-sum penalties)
-  ga.py         # Step 2: DEAP genetic algorithm loop
-  visualize.py  # matplotlib rendering (before/after, convergence curve)
-main.py         # Runs everything, saves layout_before_after.png + ga_convergence.png
-```
+---
 
 ## Running it
 
 ```bash
-pip install deap shapely matplotlib
-python3 main.py
+pip install -r requirements.txt
+python main.py
 ```
 
-Prints an itemized fitness breakdown (overlap, adjacency, daylight, etc.) for
-generation 0 vs. the final evolved layout, and saves two PNGs.
+Prints an itemized fitness breakdown for generation 0 vs. the final evolved
+layout, and regenerates both figures above.
+
+To verify the whole pipeline without waiting for a full optimization:
+
+```bash
+python smoke_test.py
+```
+
+18 checks across the program, genome, fitness, GA, and visualization layers.
+Runs in about two seconds. This is what CI executes on every push, across
+Python 3.10, 3.11, and 3.12.
+
+---
+
+## Structure
+
+```
+main.py           # Entry point: runs the GA, prints scores, saves figures
+smoke_test.py     # Fast end-to-end verification (what CI runs)
+
+floorplan/
+  program.py      # The lot envelope + room program — edit this to change the house
+  genome.py       # Encoding: 3 genes per room -> placed rectangles
+  fitness.py      # Multi-objective scoring (weighted-sum penalties)
+  ga.py           # DEAP genetic algorithm loop
+  visualize.py    # matplotlib rendering
+
+.github/workflows/
+  ci.yml                  # Runs smoke_test.py on every push
+  regenerate-figures.yml  # Manual trigger: full run, commits updated figures
+```
+
+---
 
 ## How the genome works
 
-Each room has 3 genes, all floats in `[0, 1]`:
-- `x, y` — position of the room's corner, as a fraction of the envelope's
-  usable width/height (so genes stay well-scaled regardless of house size)
-- `aspect` — maps (log-uniform) to a width/height ratio in `[0.4, 2.5]`
+Each room gets **three genes**, all floats in `[0, 1]`:
 
-Room **area** is fixed from the program (e.g. "bedroom1: 180 sqft"), so given
-the aspect ratio, width and height are both determined:
-`w = sqrt(area * ratio)`, `h = sqrt(area / ratio)`.
+| Gene | Meaning |
+|---|---|
+| `x`, `y` | Corner position, as a fraction of the envelope's usable width/height |
+| `aspect` | Maps log-uniformly to a width/height ratio in `[0.4, 2.5]` |
 
-This means the GA can never "cheat" by shrinking a room to dodge overlap
-penalties — area is a hard constraint baked into decoding, not something the
-GA controls.
+Room **area is fixed** by the program (e.g. "bedroom1: 180 sqft"), so aspect
+ratio alone determines both dimensions:
 
-## Fitness terms (all penalties, lower = better)
+```
+w = sqrt(area × ratio)
+h = sqrt(area ÷ ratio)
+```
+
+This matters: the GA can never cheat by shrinking a room to dodge an overlap
+penalty. Area is a hard constraint baked into decoding, not something the
+optimizer controls. Positions are expressed as fractions rather than absolute
+feet so that crossover and mutation stay well-behaved regardless of how large
+the envelope is.
+
+---
+
+## Fitness terms
+
+All terms are **penalties** — lower is better. The GA minimizes their weighted sum.
 
 | Term | What it measures |
 |---|---|
-| `overlap` | Total intersection area between any two rooms (shapely) |
-| `out_of_bounds` | Room area falling outside the envelope |
-| `min_dim` | Rooms thinner than their code-minimum width/height |
-| `adjacency` | Distance between room-pairs that should be close (kitchen↔dining, etc.) |
+| `overlap` | Total intersection area between any two rooms |
+| `out_of_bounds` | Room area falling outside the building envelope |
+| `min_dim` | Rooms thinner than their code-minimum width or height |
+| `adjacency` | Distance between room pairs that should be close (kitchen↔dining, hall↔bedrooms) |
 | `separation` | Rooms that should be apart but aren't (bedrooms↔entry) |
-| `daylight` | Exterior-facing rooms (bedrooms, living, kitchen) that don't touch an outside wall |
-| `circulation` | Uncovered floor area inside the envelope (beyond the dedicated hallway room) |
-| `egress` | Straight-line distance from each room to the entry, penalized past 40 ft |
+| `daylight` | Exterior-facing rooms that fail to touch an outside wall |
+| `circulation` | Uncovered floor area inside the envelope, beyond the dedicated hallway |
+| `egress` | Distance from each room to the entry, penalized past 40 ft |
 
-Weights live at the top of `fitness.py` — turning `W_ADJACENCY` up relative to
-`W_DAYLIGHT`, for instance, will visibly shift what kind of layouts the GA
-prefers. That's a good thing to demo live in an interview.
+Weights live at the top of `fitness.py`. Raising `W_ADJACENCY` relative to
+`W_DAYLIGHT`, for example, visibly changes what kind of layouts the GA
+converges toward — a useful thing to demonstrate live.
 
-## Tuning knobs that mattered
+---
 
-- **Overlap/bounds weight vs. generations**: with the initial weights
-  (50x) and 150 generations, the GA converged to ~300 sqft of residual
-  overlap — visually a few rooms clipping into each other. Bumping
-  `W_OVERLAP`/`W_OUT_OF_BOUNDS` to 150 and running longer (300-400
-  generations) with a smaller mutation step (`sigma=0.10`) drove overlap to
-  exactly zero. This is the classic GA lesson: a penalty term that isn't
-  weighted heavily enough relative to others just gets "negotiated away" by
-  the softer objectives.
-- **Elitism**: without carrying the single best individual through
-  unchanged each generation, the best score occasionally regressed between
-  generations due to crossover/mutation noise. One elite slot fixed that.
+## Tuning notes
 
-## Extending toward the "resume-strong" version
+**Hard constraints need disproportionate weight.** With the overlap penalty at
+its initial value, the GA converged to a layout with roughly 300 sqft of
+residual room overlap — the softer objectives were effectively out-negotiating
+the hard constraint, accepting a bit of overlap in exchange for better
+adjacency. Tripling `W_OVERLAP` and `W_OUT_OF_BOUNDS`, then running longer with
+a smaller mutation step, drove overlap to exactly zero. This is the classic
+weighted-sum pitfall: a constraint that isn't weighted heavily enough stops
+being a constraint.
 
-1. **Egress as a real path, not straight-line distance** — right now
-   `_egress_penalty` uses Euclidean distance to the entry. A more honest
-   version would build a graph of room-adjacency-through-doorways and run
-   shortest-path, or rasterize the floor plan and do a grid-based BFS/A*
-   around walls.
-2. **True multi-objective (Pareto) optimization** — swap `ga.py`'s
-   weighted-sum DEAP setup for `pymoo`'s NSGA-II, and have `fitness.py`
-   return the itemized tuple from `score_breakdown()` instead of a single
-   sum. Then you can show a **Pareto front** (daylight vs. circulation
-   tradeoff curve) instead of one blended number — this is the single
-   biggest upgrade for "demonstrates understanding of real design
-   tradeoffs" from the brief.
-3. **Doors/openings** — currently rooms are sealed rectangles with no
-   connectivity model. Adding a doorway graph (which walls are shared and
-   where a door sits) would let adjacency scoring reward *actual* access,
-   not just proximity, and would make the egress penalty in (1) meaningful.
-4. **Diffusion model stretch goal** — train on RPLAN. The genome/decode
-   split here should make that swap relatively contained: replace
-   `ga.run()` with a diffusion sampler that outputs the same
-   `List[float]` genome format, and `visualize.py`/`fitness.py` need no
-   changes.
-5. **Non-rectangular lots** — `ENVELOPE` is currently an axis-aligned
-   rectangle. A polygon envelope (via Shapely) with a rotated/irregular lot
-   shape would demo the "real zoning constraints" angle harder.
+**Elitism prevents regression.** Without carrying the single best individual
+through unchanged each generation, the best score occasionally got *worse*
+between generations as crossover and mutation destroyed good solutions. One
+elite slot fixed it.
+
+**Mutation step size controls the endgame.** A larger step (`sigma=0.15`)
+explored well early but couldn't settle into a clean packing. Dropping to
+`sigma=0.10` and running more generations let the population fine-tune room
+positions once the rough arrangement was found.
+
+---
+
+## Where this goes next
+
+Roughly in order of how much each would strengthen the project:
+
+1. **True multi-objective optimization.** Replace the weighted-sum DEAP setup
+   with `pymoo`'s NSGA-II, returning the itemized tuple from
+   `score_breakdown()` instead of a single sum. This produces a **Pareto
+   front** — an explicit daylight-vs-circulation tradeoff curve — rather than
+   one blended number. The single biggest upgrade, since real design work is
+   about navigating tradeoffs, not optimizing a scalar.
+
+2. **Egress as a real path.** Currently `_egress_penalty` uses straight-line
+   distance to the entry, which ignores walls. A more honest version would
+   rasterize the plan and run a grid-based BFS or A* around obstacles, or
+   build a doorway-connectivity graph and compute shortest paths.
+
+3. **Doors and openings.** Rooms are sealed rectangles with no connectivity
+   model. Adding doorways would let adjacency scoring reward *actual access*
+   rather than mere proximity, and would make real egress pathing meaningful.
+
+4. **Non-rectangular lots.** `ENVELOPE` is an axis-aligned rectangle. Shapely
+   already supports arbitrary polygons, so an irregular lot with real zoning
+   setbacks is a contained change to `program.py` and the bounds checks.
+
+5. **Diffusion model on RPLAN.** The genome/decode split should make this
+   swap fairly self-contained — replace `ga.run()` with a sampler that emits
+   the same flat genome format, and `fitness.py` and `visualize.py` need no
+   changes at all.
+
+---
+
+## Stack
+
+Python · [DEAP](https://github.com/DEAP/deap) (genetic algorithm) ·
+[Shapely](https://shapely.readthedocs.io/) (geometry and overlap detection) ·
+Matplotlib (visualization)
