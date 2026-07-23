@@ -1,0 +1,33 @@
+# ============================================================
+#  House specification
+# ============================================================
+#
+#  Lot size, in feet:
+#      lot WIDTH x DEPTH
+#
+#  Rooms, one per line. Two ways to give the size:
+#
+#      living 280        <- 280 square feet, optimizer picks the shape
+#      living 14x20      <- exactly 14 by 20 feet, size locked
+#
+#  Optional flags after the size:
+#
+#      exterior   room should touch an outside wall (needs windows)
+#      entry      the front door -- exactly one room must have this
+#      min=N      smallest allowed width or height, in feet (default 7)
+#
+#  Anything after a # is ignored.
+# ============================================================
+
+lot 42 x 32
+
+entry      60   exterior entry min=6
+living     280  exterior min=12
+kitchen    160  exterior min=10
+dining     140  min=10
+bedroom1   180  exterior min=11
+bedroom2   140  exterior min=10
+bedroom3   120  exterior min=10
+bathroom1  60   min=6
+bathroom2  45   min=5
+hallway    90   min=4
