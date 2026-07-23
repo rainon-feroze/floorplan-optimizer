@@ -42,13 +42,13 @@ def test_spec_parsing():
     from floorplan.program import parse_spec
 
     # area mode
-    env, rooms = parse_spec("lot 40x30; living 300 exterior; entry 50 entry")
+    env, rooms, _fs = parse_spec("lot 40x30; living 300 exterior; entry 50 entry")
     check("area mode: lot parsed", env.width == 40 and env.depth == 30)
     check("area mode: area set, dims free",
           rooms[0].area == 300 and not rooms[0].has_fixed_dims)
 
     # dimension mode
-    env, rooms = parse_spec("lot 40x30; living 12x20 exterior; entry 5x10 entry")
+    env, rooms, _fs = parse_spec("lot 40x30; living 12x20 exterior; entry 5x10 entry")
     living = rooms[0]
     check("dimension mode: dims locked", living.has_fixed_dims)
     check("dimension mode: area derived from dims", living.area == 240)
@@ -58,21 +58,32 @@ def test_spec_parsing():
     # flags
     check("exterior flag parsed", living.wants_exterior)
     check("entry flag parsed", rooms[1].is_entry)
-    _, r = parse_spec("lot 40x30; hall 4x20 min=3 entry")
+    _, r, _fs = parse_spec("lot 40x30; hall 4x20 min=3 entry")
     check("min= flag parsed", r[0].min_dim == 3)
 
     # comments and blank lines ignored
-    _, r = parse_spec("lot 40x30\n# a comment\n\nliving 200 entry  # trailing\n")
+    _, r, _fs = parse_spec("lot 40x30\n# a comment\n\nliving 200 entry  # trailing\n")
     check("comments and blanks ignored", len(r) == 1 and r[0].area == 200)
 
     # regression: a semicolon inside a comment must not leak a bogus line
-    _, r = parse_spec("# note: works well; but watch coverage\n"
+    _, r, _fs = parse_spec("# note: works well; but watch coverage\n"
                       "lot 40x30\nliving 200 entry\n")
     check("semicolon inside a comment is ignored", len(r) == 1)
 
     # semicolons still separate real entries
-    _, r = parse_spec("lot 40x30; living 200 entry; den 100")
+    _, r, _fs = parse_spec("lot 40x30; living 200 entry; den 100")
     check("semicolon separates entries", len(r) == 2)
+
+    # feng shui directive
+    _, _, on = parse_spec("fengshui on; lot 40x30; living 200 entry")
+    _, _, off = parse_spec("lot 40x30; living 200 entry")
+    check("fengshui directive parsed", on is True and off is False)
+    expect_bad = False
+    try:
+        parse_spec("fengshui maybe; lot 40x30; living 200 entry")
+    except ValueError:
+        expect_bad = True
+    check("rejects bad fengshui value", expect_bad)
 
     # errors
     def expect_error(label, spec):
@@ -93,6 +104,80 @@ def test_spec_parsing():
                  "lot 20x20; living 30x5 entry")
     expect_error("rejects negative size", "lot 40x30; living -50 entry")
     expect_error("rejects unknown flag", "lot 40x30; living 200 entry sparkly")
+
+
+def test_feng_shui():
+    print("\n[feng shui]")
+    from floorplan import feng_shui as fs
+    from floorplan.genome import PlacedRoom
+    from floorplan.program import ENVELOPE, ROOM_BY_NAME
+
+    if "entry" not in ROOM_BY_NAME or "kitchen" not in ROOM_BY_NAME:
+        print("  SKIP  (default room program not loaded)")
+        return
+
+    W, D = ENVELOPE.width, ENVELOPE.depth
+
+    def mk(name, x, y, w, h):
+        return PlacedRoom(name, x, y, w, h, ROOM_BY_NAME[name])
+
+    # entry wall detection, all four sides
+    for wall, (x, y) in {"S": (18, 0), "N": (18, D - 8),
+                         "W": (0, 12), "E": (W - 6, 12)}.items():
+        got = fs.entry_wall({"entry": mk("entry", x, y, 6, 8)})
+        check(f"entry on {wall} wall detected", got == wall, f"(got {got})")
+
+    # chi ray: clear shot is worse than a blocked one
+    clear = {"entry": mk("entry", 15, 0, 6, 8),
+             "living": mk("living", 0, 10, 10, 20)}
+    blocked = {"entry": mk("entry", 15, 0, 6, 8),
+               "living": mk("living", 12, 9, 14, 20)}
+    check("clear shot from door penalized",
+          fs.chi_straight_shot(clear) > 20)
+    check("blocked shot not penalized",
+          fs.chi_straight_shot(blocked) == 0)
+
+    # kitchen/bath shared wall
+    touching = {"kitchen": mk("kitchen", 0, 0, 10, 16),
+                "bathroom1": mk("bathroom1", 10, 0, 6, 10)}
+    apart = {"kitchen": mk("kitchen", 0, 0, 10, 16),
+             "bathroom1": mk("bathroom1", 30, 0, 6, 10)}
+    check("shared kitchen/bath wall measured",
+          abs(fs.kitchen_bath_clash(touching) - 10.0) < 0.01)
+    check("separated kitchen/bath is clean",
+          fs.kitchen_bath_clash(apart) == 0)
+
+    # tai chi
+    centered = {"bathroom1": mk("bathroom1", W / 2 - 3, D / 2 - 5, 6, 10)}
+    cornered = {"bathroom1": mk("bathroom1", 0, 0, 6, 10)}
+    check("bathroom in the center penalized",
+          fs.bathroom_center(centered) > 0)
+    check("bathroom in a corner is clean",
+          fs.bathroom_center(cornered) == 0)
+
+    # bathroom near the door
+    near = {"entry": mk("entry", 15, 0, 6, 8),
+            "bathroom1": mk("bathroom1", 15, 8, 6, 10)}
+    far = {"entry": mk("entry", 15, 0, 6, 8),
+           "bathroom1": mk("bathroom1", 0, 22, 6, 10)}
+    check("bathroom at the door penalized", fs.bathroom_at_entry(near) > 0)
+    check("bathroom away from door is clean", fs.bathroom_at_entry(far) == 0)
+
+    # bagua grid names and orientation
+    cells = {fs._zone_of(W * (c + 0.5) / 3, D * (r + 0.5) / 3, "S")
+             for r in range(3) for c in range(3)}
+    check("bagua grid covers all nine cells", len(cells) == 9)
+
+    # the relationships zone should sit in a different corner per entry wall
+    corners = set()
+    for wall in "SNWE":
+        for r in range(3):
+            for c in range(3):
+                px, py = W * (c + 0.5) / 3, D * (r + 0.5) / 3
+                if fs._zone_of(px, py, wall) == (2, 2):
+                    corners.add((round(px), round(py)))
+    check("bagua reorients with the entry wall", len(corners) == 4,
+          f"(found {len(corners)} distinct corners)")
 
 
 def test_genome():
@@ -173,6 +258,7 @@ def main():
     print("Running floor plan optimizer smoke tests...")
     test_program()
     test_spec_parsing()
+    test_feng_shui()
     test_genome()
     test_fitness()
     best0, best_final, logbook = test_ga_short_run()
