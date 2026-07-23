@@ -25,18 +25,6 @@ on:
         required: true
         default: 'my-house'
 
-      generations:
-        description: 'How long to evolve (more = better, slower)'
-        required: true
-        default: '400'
-        type: choice
-        options: ['150', '400', '800']
-
-      seed:
-        description: 'Random seed — change it to get a different layout'
-        required: false
-        default: '42'
-
 jobs:
   design:
     runs-on: ubuntu-latest
@@ -62,12 +50,15 @@ jobs:
           FLOORPLAN_SPEC_TEXT: "lot ${{ inputs.lot_size }}; ${{ inputs.rooms }}"
         run: python -m floorplan.program
 
+      - name: Pick a layout variation
+        id: variation
+        run: echo "seed=$RANDOM" >> "$GITHUB_OUTPUT"
+
       - name: Design the floor plan
         env:
           MPLBACKEND: Agg
           FLOORPLAN_SPEC_TEXT: "lot ${{ inputs.lot_size }}; ${{ inputs.rooms }}"
-          FLOORPLAN_SEED: ${{ inputs.seed }}
-          FLOORPLAN_GENERATIONS: ${{ inputs.generations }}
+          FLOORPLAN_SEED: ${{ steps.variation.outputs.seed }}
         run: python main.py
 
       - name: Save the design
@@ -84,7 +75,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No change to commit."
           else
-            git commit -m "Design: ${{ inputs.name }} (${{ inputs.lot_size }} lot, seed ${{ inputs.seed }})"
+            git commit -m "Design: ${{ inputs.name }} (${{ inputs.lot_size }} lot)"
             git push
           fi
 
@@ -96,9 +87,7 @@ jobs:
             echo ""
             echo "![plan](${RAW}/${{ inputs.name }}.png)"
             echo ""
-            echo "**Lot:** ${{ inputs.lot_size }} ft &nbsp;·&nbsp; "
-            echo "**Generations:** ${{ inputs.generations }} &nbsp;·&nbsp; "
-            echo "**Seed:** ${{ inputs.seed }}"
+            echo "**Lot:** ${{ inputs.lot_size }} ft"
             echo ""
             echo "## Score"
             echo ""
