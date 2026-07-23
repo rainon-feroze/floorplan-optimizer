@@ -1,0 +1,23 @@
+# Same house, but with every room given explicit dimensions instead of
+# square footage. The optimizer can rotate rooms 90 degrees and move them
+# around, but cannot resize them.
+#
+# Use this as a starting point if you already know the room sizes you want.
+# Run it with:   FLOORPLAN_SPEC=examples/house_dimensions.txt python main.py
+
+# Note the larger lot: when room shapes are locked, the optimizer loses the
+# freedom to squeeze rooms into leftover gaps, so a fixed-dimension program
+# needs more slack than an equivalent area-mode one. Around 75-85% coverage
+# packs reliably; push much past that and rooms start overlapping.
+lot 46 x 36
+
+entry      6x10    exterior entry
+living     14x20   exterior
+kitchen    10x16   exterior
+dining     10x14
+bedroom1   12x15   exterior
+bedroom2   10x14   exterior
+bedroom3   10x12   exterior
+bathroom1  6x10
+bathroom2  5x9
+hallway    4x22
