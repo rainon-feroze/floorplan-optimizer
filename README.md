@@ -121,6 +121,68 @@ converges toward — a useful thing to demonstrate live.
 
 ---
 
+## Feng shui mode
+
+An optional second rule set, encoding traditional feng shui principles as
+geometry. These are cultural design conventions, not empirical performance
+criteria — they're implemented because "the client wants feng shui
+compliance" is a real constraint an architect gets handed, and because the
+rules turn out to be unusually well suited to this solver: nearly all of them
+reduce to adjacency, orientation, or sightline conditions the fitness
+function can already express.
+
+Turn it on with a line in the spec file:
+
+```
+fengshui on
+```
+
+or tick the checkbox on the workflow form.
+
+![Feng shui layout](floorplan_fengshui.png)
+
+The dashed 3×3 overlay is the bagua grid. It uses the Black Sect (BTB) form,
+which orients to the **front door** rather than compass north — so the rules
+stay meaningful without knowing which way the lot faces. Entry on the west
+wall reorients the whole grid automatically.
+
+| Rule | What it checks |
+|---|---|
+| `chi_straight_shot` | Casts a ray inward from the front door; penalizes an unobstructed run across the house |
+| `bathroom_at_entry` | Bathroom shouldn't be the first thing facing the door |
+| `kitchen_bath_clash` | Shared wall length between kitchen and bathroom (the fire/water clash) |
+| `bathroom_center` | Nothing wet in the tai chi — the middle ninth of the plan |
+| `bedroom_command` | Bedrooms out of the door's direct line of travel |
+| `bagua_zones` | Preferred and disfavored octants for key rooms |
+
+Several of these have a straightforwardly practical reading alongside the
+traditional one. The straight-shot rule is the clearest: the traditional
+objection is that chi enters and immediately escapes, while the practical
+objection is identical in shape — an unobstructed axis from the front door
+means no privacy buffer and nothing to slow air or sound.
+
+### Feng shui compliance costs floor area
+
+The rules can't always be satisfied. On a tight plan there's simply nowhere to
+put a bathroom except the center. Running the same ten-room program on three
+lot sizes:
+
+| Lot | Coverage | Feng shui penalty |
+|---|---|---|
+| 42 × 32 | 95% | 139 |
+| 46 × 36 | 77% | 3 |
+| 50 × 40 | 64% | **−24** |
+
+A negative score means the optimizer didn't just avoid the disfavored
+placements, it hit the preferred ones — master bedroom in the relationships
+zone, living room in family. So compliance needs roughly 20% slack in the
+plan, which is a measured tradeoff rather than an assertion.
+
+With feng shui disabled, scoring is unchanged: the default house still returns
+exactly 477.07 at seed 7, the same as before the feature existed.
+
+---
+
 ## Tuning notes
 
 **Hard constraints need disproportionate weight.** With the overlap penalty at
