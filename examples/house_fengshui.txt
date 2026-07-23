@@ -1,0 +1,33 @@
+# Feng shui example.
+#
+# Same room program as the default house, but on a roomier lot and with the
+# feng shui rule set turned on.
+#
+# The larger lot is not incidental. Feng shui compliance costs floor area:
+# with the same ten rooms, the rules go from badly violated to fully
+# satisfied as coverage drops.
+#
+#     lot 42x32   95% coverage   feng shui penalty  139
+#     lot 46x36   77% coverage   feng shui penalty    3
+#     lot 50x40   64% coverage   feng shui penalty  -24  (favored placements met)
+#
+# A negative score means the optimizer not only avoided the disfavored
+# placements but hit the preferred ones -- master bedroom in the
+# relationships zone, living room in the family zone.
+#
+# Run with:  FLOORPLAN_SPEC=examples/house_fengshui.txt python main.py
+
+fengshui on
+
+lot 50 x 40
+
+entry      60   exterior entry min=6
+living     280  exterior min=12
+kitchen    160  exterior min=10
+dining     140  min=10
+bedroom1   180  exterior min=11
+bedroom2   140  exterior min=10
+bedroom3   120  exterior min=10
+bathroom1  60   min=6
+bathroom2  45   min=5
+hallway    90   min=4
