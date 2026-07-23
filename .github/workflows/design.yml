@@ -1,0 +1,123 @@
+# Design a floor plan from a form -- no code editing required.
+#
+# Go to the Actions tab -> "Design a floor plan" -> "Run workflow".
+# Fill in the boxes, hit the green button, wait about a minute.
+# The resulting plan is committed to the repo as designs/<name>.png
+# and the full log shows the score breakdown.
+
+name: Design a floor plan
+
+on:
+  workflow_dispatch:
+    inputs:
+      lot_size:
+        description: 'Lot size in feet, WIDTHxDEPTH (e.g. 46x36)'
+        required: true
+        default: '46x36'
+
+      rooms:
+        description: 'Rooms, separated by semicolons. Size is either sq ft (280) or dimensions (14x20).'
+        required: true
+        default: 'entry 6x10 entry exterior; living 14x20 exterior; kitchen 10x16 exterior; dining 10x14; bedroom1 12x15 exterior; bedroom2 10x14 exterior; bathroom1 6x10; hallway 4x22'
+
+      name:
+        description: 'Name for this design (used as the output filename)'
+        required: true
+        default: 'my-house'
+
+      generations:
+        description: 'How long to evolve (more = better, slower)'
+        required: true
+        default: '400'
+        type: choice
+        options: ['150', '400', '800']
+
+      seed:
+        description: 'Random seed — change it to get a different layout'
+        required: false
+        default: '42'
+
+jobs:
+  design:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Show the requested program
+        env:
+          FLOORPLAN_SPEC_TEXT: "lot ${{ inputs.lot_size }}; ${{ inputs.rooms }}"
+        run: python -m floorplan.program
+
+      - name: Design the floor plan
+        env:
+          MPLBACKEND: Agg
+          FLOORPLAN_SPEC_TEXT: "lot ${{ inputs.lot_size }}; ${{ inputs.rooms }}"
+          FLOORPLAN_SEED: ${{ inputs.seed }}
+          FLOORPLAN_GENERATIONS: ${{ inputs.generations }}
+        run: python main.py
+
+      - name: Save the design
+        run: |
+          mkdir -p designs
+          cp floorplan.png "designs/${{ inputs.name }}.png"
+          cp layout_before_after.png "designs/${{ inputs.name }}-evolution.png"
+
+      - name: Commit it
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add designs/
+          if git diff --staged --quiet; then
+            echo "No change to commit."
+          else
+            git commit -m "Design: ${{ inputs.name }} (${{ inputs.lot_size }} lot, seed ${{ inputs.seed }})"
+            git push
+          fi
+
+      - name: Show the plan on this page
+        run: |
+          RAW="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/designs"
+          {
+            echo "# ${{ inputs.name }}"
+            echo ""
+            echo "![plan](${RAW}/${{ inputs.name }}.png)"
+            echo ""
+            echo "**Lot:** ${{ inputs.lot_size }} ft &nbsp;·&nbsp; "
+            echo "**Generations:** ${{ inputs.generations }} &nbsp;·&nbsp; "
+            echo "**Seed:** ${{ inputs.seed }}"
+            echo ""
+            echo "## Score"
+            echo ""
+            echo '```'
+            cat score.txt
+            echo '```'
+            echo ""
+            echo "<details><summary>How it evolved</summary>"
+            echo ""
+            echo "![evolution](${RAW}/${{ inputs.name }}-evolution.png)"
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Also attach as a download
+        uses: actions/upload-artifact@v4
+        with:
+          name: floorplan-${{ inputs.name }}
+          path: |
+            floorplan.png
+            layout_before_after.png
+            ga_convergence.png
