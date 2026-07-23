@@ -34,7 +34,7 @@ python main.py
 ```
 
 Prints an itemized fitness breakdown for generation 0 vs. the final evolved
-layout, and regenerates both figures above.
+layout, and regenerates the figures above.
 
 To verify the whole pipeline without waiting for a full optimization:
 
@@ -42,9 +42,9 @@ To verify the whole pipeline without waiting for a full optimization:
 python smoke_test.py
 ```
 
-18 checks across the program, genome, fitness, GA, and visualization layers.
-Runs in about two seconds. This is what CI executes on every push, across
-Python 3.10, 3.11, and 3.12.
+54 checks across the program, spec parser, genome, fitness, feng shui rules,
+GA, and visualization layers. Runs in about two seconds. This is what CI
+executes on every push, across Python 3.10, 3.11, and 3.12.
 
 To regenerate the animation:
 
@@ -60,18 +60,59 @@ python make_animation.py
 main.py           # Entry point: runs the GA, prints scores, saves figures
 smoke_test.py     # Fast end-to-end verification (what CI runs)
 make_animation.py # Renders evolution.gif from a recorded run
+house.txt         # The house description — edit this, not the code
 
 floorplan/
-  program.py      # The lot envelope + room program — edit this to change the house
+  program.py      # Spec parser: reads house.txt into rooms + envelope
   genome.py       # Encoding: 3 genes per room -> placed rectangles
   fitness.py      # Multi-objective scoring (weighted-sum penalties)
+  feng_shui.py    # Optional feng shui rule set (off by default)
   ga.py           # DEAP genetic algorithm loop
   visualize.py    # matplotlib rendering
 
+examples/
+  house_dimensions.txt  # Same house, rooms given as dimensions
+  house_fengshui.txt    # Feng shui enabled, roomier lot
+
 .github/workflows/
   ci.yml                  # Runs smoke_test.py on every push
+  design.yml              # Form: enter a house, get a plan back
   regenerate-figures.yml  # Manual trigger: full run, commits updated figures
 ```
+
+---
+
+## Describing a house
+
+The house lives in `house.txt`, not in code:
+
+```
+lot 42 x 32
+
+living     280  exterior min=12
+kitchen    160  exterior min=10
+entry      60   exterior entry min=6
+```
+
+Room size accepts two forms:
+
+| Written as | Means |
+|---|---|
+| `living 280` | 280 sq ft — the optimizer picks the proportions |
+| `living 14x20` | Exactly 14 by 20 feet — locked |
+
+With locked dimensions the optimizer can still rotate a room 90° and move it,
+but never resize it. Flags after the size: `exterior` (needs an outside wall),
+`entry` (the front door — exactly one room must have it), and `min=N` (smallest
+allowed width or height).
+
+Locked rooms pack much harder than flexible ones. Past roughly 85% coverage
+they usually can't fit without overlapping, and the parser warns when a spec
+crosses that line.
+
+You can also skip the file entirely: **Actions → Design a floor plan** gives you
+a form. Enter a lot size and rooms, and the finished plan appears on the run
+summary page and lands in `designs/`.
 
 ---
 
@@ -98,6 +139,10 @@ optimizer controls. Positions are expressed as fractions rather than absolute
 feet so that crossover and mutation stay well-behaved regardless of how large
 the envelope is.
 
+When a room is given explicit dimensions instead of an area, the third gene
+switches meaning: it becomes a 90° rotation flag rather than an aspect ratio.
+The room can turn, but not resize.
+
 ---
 
 ## Fitness terms
@@ -118,6 +163,8 @@ All terms are **penalties** — lower is better. The GA minimizes their weighted
 Weights live at the top of `fitness.py`. Raising `W_ADJACENCY` relative to
 `W_DAYLIGHT`, for example, visibly changes what kind of layouts the GA
 converges toward — a useful thing to demonstrate live.
+
+Enabling feng shui adds six more terms on top of these.
 
 ---
 
@@ -203,6 +250,11 @@ elite slot fixed it.
 explored well early but couldn't settle into a clean packing. Dropping to
 `sigma=0.10` and running more generations let the population fine-tune room
 positions once the rough arrangement was found.
+
+**Normalize penalties that scale with area.** The tai chi rule originally
+returned raw square feet, which meant its weight implied something different
+on a 1,300 sf cottage than on a 6,000 sf house. Expressing it as a fraction of
+each bathroom's own area made the weight portable across house sizes.
 
 ---
 
