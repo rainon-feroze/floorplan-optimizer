@@ -37,6 +37,64 @@ def test_program():
           sum(1 for r in ROOMS if r.is_entry) == 1)
 
 
+def test_spec_parsing():
+    print("\n[spec parsing]")
+    from floorplan.program import parse_spec
+
+    # area mode
+    env, rooms = parse_spec("lot 40x30; living 300 exterior; entry 50 entry")
+    check("area mode: lot parsed", env.width == 40 and env.depth == 30)
+    check("area mode: area set, dims free",
+          rooms[0].area == 300 and not rooms[0].has_fixed_dims)
+
+    # dimension mode
+    env, rooms = parse_spec("lot 40x30; living 12x20 exterior; entry 5x10 entry")
+    living = rooms[0]
+    check("dimension mode: dims locked", living.has_fixed_dims)
+    check("dimension mode: area derived from dims", living.area == 240)
+    check("dimension mode: width/height preserved",
+          living.fixed_w == 12 and living.fixed_h == 20)
+
+    # flags
+    check("exterior flag parsed", living.wants_exterior)
+    check("entry flag parsed", rooms[1].is_entry)
+    _, r = parse_spec("lot 40x30; hall 4x20 min=3 entry")
+    check("min= flag parsed", r[0].min_dim == 3)
+
+    # comments and blank lines ignored
+    _, r = parse_spec("lot 40x30\n# a comment\n\nliving 200 entry  # trailing\n")
+    check("comments and blanks ignored", len(r) == 1 and r[0].area == 200)
+
+    # regression: a semicolon inside a comment must not leak a bogus line
+    _, r = parse_spec("# note: works well; but watch coverage\n"
+                      "lot 40x30\nliving 200 entry\n")
+    check("semicolon inside a comment is ignored", len(r) == 1)
+
+    # semicolons still separate real entries
+    _, r = parse_spec("lot 40x30; living 200 entry; den 100")
+    check("semicolon separates entries", len(r) == 2)
+
+    # errors
+    def expect_error(label, spec):
+        try:
+            parse_spec(spec)
+            check(label, False, "(expected an error, got none)")
+        except ValueError:
+            check(label, True)
+
+    expect_error("rejects missing lot line", "living 200 entry")
+    expect_error("rejects no rooms", "lot 40x30")
+    expect_error("rejects zero entry rooms", "lot 40x30; living 200")
+    expect_error("rejects two entry rooms",
+                 "lot 40x30; living 200 entry; den 100 entry")
+    expect_error("rejects rooms bigger than the lot",
+                 "lot 20x20; living 900 entry")
+    expect_error("rejects a room too large to fit",
+                 "lot 20x20; living 30x5 entry")
+    expect_error("rejects negative size", "lot 40x30; living -50 entry")
+    expect_error("rejects unknown flag", "lot 40x30; living 200 entry sparkly")
+
+
 def test_genome():
     print("\n[genome]")
     n = genome_length()
@@ -114,6 +172,7 @@ def test_visualization(best0, best_final, logbook):
 def main():
     print("Running floor plan optimizer smoke tests...")
     test_program()
+    test_spec_parsing()
     test_genome()
     test_fitness()
     best0, best_final, logbook = test_ga_short_run()
