@@ -25,6 +25,12 @@ on:
         required: true
         default: 'my-house'
 
+      fengshui:
+        description: 'Apply feng shui rules (needs a roomier lot — see README)'
+        required: false
+        type: boolean
+        default: false
+
 jobs:
   design:
     runs-on: ubuntu-latest
@@ -48,6 +54,7 @@ jobs:
       - name: Show the requested program
         env:
           FLOORPLAN_SPEC_TEXT: "lot ${{ inputs.lot_size }}; ${{ inputs.rooms }}"
+          FLOORPLAN_FENGSHUI: ${{ inputs.fengshui && '1' || '0' }}
         run: python -m floorplan.program
 
       - name: Pick a layout variation
@@ -59,6 +66,7 @@ jobs:
           MPLBACKEND: Agg
           FLOORPLAN_SPEC_TEXT: "lot ${{ inputs.lot_size }}; ${{ inputs.rooms }}"
           FLOORPLAN_SEED: ${{ steps.variation.outputs.seed }}
+          FLOORPLAN_FENGSHUI: ${{ inputs.fengshui && '1' || '0' }}
         run: python main.py
 
       - name: Save the design
@@ -88,6 +96,10 @@ jobs:
             echo "![plan](${RAW}/${{ inputs.name }}.png)"
             echo ""
             echo "**Lot:** ${{ inputs.lot_size }} ft"
+            if [ "${{ inputs.fengshui }}" = "true" ]; then
+              echo ""
+              echo "Feng shui rules applied. The dashed 3×3 overlay is the bagua grid, oriented to the front door."
+            fi
             echo ""
             echo "## Score"
             echo ""
