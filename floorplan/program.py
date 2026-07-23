@@ -81,9 +81,10 @@ def _parse_size(token: str) -> Tuple[float, Optional[float], Optional[float]]:
     return area, None, None
 
 
-def parse_spec(text: str) -> Tuple[Envelope, List[Room]]:
+def parse_spec(text: str) -> Tuple[Envelope, List[Room], bool]:
     envelope = None
     rooms: List[Room] = []
+    fengshui = False
 
     # Build the list of logical lines. Comments are stripped FIRST, then
     # semicolons are treated as line breaks -- doing it the other way round
@@ -105,6 +106,19 @@ def parse_spec(text: str) -> Tuple[Envelope, List[Room]]:
                 rest = "".join(parts[1:])
                 w, d = rest.lower().split("x", 1)
                 envelope = Envelope(width=float(w), depth=float(d))
+                continue
+
+            if parts[0].lower() in ("fengshui", "feng_shui"):
+                if len(parts) < 2:
+                    raise ValueError("use 'fengshui on' or 'fengshui off'")
+                setting = parts[1].lower()
+                if setting in ("on", "yes", "true", "1"):
+                    fengshui = True
+                elif setting in ("off", "no", "false", "0"):
+                    fengshui = False
+                else:
+                    raise ValueError(
+                        f"expected on/off after 'fengshui', got '{parts[1]}'")
                 continue
 
             name = parts[0]
@@ -185,7 +199,7 @@ def parse_spec(text: str) -> Tuple[Envelope, List[Room]]:
                     f"in a {envelope.width:g}x{envelope.depth:g} ft lot"
                 )
 
-    return envelope, rooms
+    return envelope, rooms, fengshui
 
 
 def _load_spec_text() -> str:
@@ -217,7 +231,15 @@ def _load_spec_text() -> str:
 # Module-level program (what the rest of the codebase reads)
 # ---------------------------------------------------------------------------
 
-ENVELOPE, ROOMS = parse_spec(_load_spec_text())
+ENVELOPE, ROOMS, _SPEC_FENG_SHUI = parse_spec(_load_spec_text())
+
+# The spec file can turn feng shui on; the env var can override either way
+# (that's how the workflow checkbox reaches it without editing the spec).
+_env_fs = os.environ.get("FLOORPLAN_FENGSHUI")
+if _env_fs is not None and _env_fs.strip() != "":
+    FENG_SHUI = _env_fs.strip().lower() in ("1", "on", "yes", "true")
+else:
+    FENG_SHUI = _SPEC_FENG_SHUI
 
 ROOM_NAMES = [r.name for r in ROOMS]
 ROOM_BY_NAME = {r.name: r for r in ROOMS}

@@ -1,10 +1,42 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-from .program import ENVELOPE
+from .program import ENVELOPE, FENG_SHUI
 from .genome import decode
 
 CMAP = plt.get_cmap("tab20")
+
+
+def _draw_bagua(ax, placed):
+    """Faint 3x3 bagua grid, oriented to the entry wall, drawn under the
+    rooms so it reads as a reference overlay rather than architecture."""
+    from . import feng_shui as fs
+
+    wall = fs.entry_wall(placed)
+    if wall is None:
+        return
+
+    ex0, ey0, ex1, ey1 = ENVELOPE.bounds
+    w, h = ex1 - ex0, ey1 - ey0
+
+    for i in (1, 2):
+        ax.plot([ex0 + w * i / 3] * 2, [ey0, ey1],
+                color="0.75", lw=0.8, ls=(0, (4, 4)), zorder=0)
+        ax.plot([ex0, ex1], [ey0 + h * i / 3] * 2,
+                color="0.75", lw=0.8, ls=(0, (4, 4)), zorder=0)
+
+    for row in range(3):
+        for col in range(3):
+            # find the absolute cell whose (row, col) matches, given orientation
+            for ar in range(3):
+                for ac in range(3):
+                    px = ex0 + w * (ac + 0.5) / 3
+                    py = ey0 + h * (ar + 0.5) / 3
+                    if fs._zone_of(px, py, wall) == (row, col):
+                        ax.text(px, ey0 + h * (ar + 0.92) / 3,
+                                fs.BAGUA_NAMES[(row, col)],
+                                ha="center", va="top", fontsize=6,
+                                color="0.6", style="italic", zorder=0)
 
 
 def _draw_layout(ax, genome, title):
@@ -55,6 +87,9 @@ def plot_final_plan(genome, out_path, title="Floor Plan", subtitle=None):
     # building envelope
     ax.add_patch(patches.Rectangle((ex0, ey0), ew, eh,
                                     fill=False, edgecolor="black", linewidth=3))
+
+    if FENG_SHUI:
+        _draw_bagua(ax, placed)
 
     for i, (name, p) in enumerate(placed.items()):
         ax.add_patch(patches.Rectangle(

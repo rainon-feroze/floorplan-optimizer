@@ -12,8 +12,10 @@ from typing import Dict, List, Tuple
 from shapely.geometry import box, Point
 from shapely.ops import unary_union
 
-from .program import ENVELOPE, ADJACENCY_PREFS, SEPARATION_PREFS, ROOM_BY_NAME
+from .program import (ENVELOPE, ADJACENCY_PREFS, SEPARATION_PREFS,
+                      ROOM_BY_NAME, FENG_SHUI)
 from .genome import PlacedRoom, decode
+from . import feng_shui
 
 # Weights: tune these to shift what the GA prioritizes.
 W_OVERLAP = 150.0       # rooms must not overlap -- heavily penalized
@@ -51,8 +53,16 @@ def _out_of_bounds_penalty(polys) -> float:
 
 
 def _min_dim_penalty(placed: Dict[str, PlacedRoom]) -> float:
+    """Penalize rooms thinner than their code minimum.
+
+    Rooms given explicit dimensions are exempt -- if you asked for 4x20, the
+    optimizer shouldn't second-guess you. The minimum only constrains rooms
+    whose shape the GA is free to choose.
+    """
     total = 0.0
     for p in placed.values():
+        if p.room.has_fixed_dims:
+            continue
         deficit_w = max(p.room.min_dim - p.w, 0.0)
         deficit_h = max(p.room.min_dim - p.h, 0.0)
         total += deficit_w + deficit_h
@@ -147,6 +157,9 @@ def evaluate(genome: List[float]) -> Tuple[float]:
     score += W_CIRCULATION * _circulation_penalty(polys)
     score += W_EGRESS * _egress_penalty(placed)
 
+    if FENG_SHUI:
+        score += feng_shui.penalty(placed)
+
     return (score,)  # DEAP expects a tuple
 
 
@@ -155,7 +168,7 @@ def score_breakdown(genome: List[float]) -> Dict[str, float]:
     reporting which objective is dominating the score."""
     placed = decode(genome)
     polys = _room_polygons(placed)
-    return {
+    parts = {
         "overlap": W_OVERLAP * _overlap_penalty(polys),
         "out_of_bounds": W_OUT_OF_BOUNDS * _out_of_bounds_penalty(polys),
         "min_dim": W_MIN_DIM * _min_dim_penalty(placed),
@@ -165,3 +178,6 @@ def score_breakdown(genome: List[float]) -> Dict[str, float]:
         "circulation": W_CIRCULATION * _circulation_penalty(polys),
         "egress": W_EGRESS * _egress_penalty(placed),
     }
+    if FENG_SHUI:
+        parts.update(feng_shui.breakdown(placed))
+    return parts
